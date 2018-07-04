@@ -32,21 +32,23 @@ const DatabaseName = "benchmark_db"
 
 // Program option vars:
 var (
-	daemonUrl           string
-	workers             int
-	batchSize           int
-	doLoad              bool
-	doDbCreate          bool
-	reportDatabase      string
-	reportHost          string
-	reportUser          string
-	reportPassword      string
-	reportTagsCSV       string
-	psUser              string
-	psPassword          string
-	file                string
-	chunkDuration       time.Duration
-	usePostgresBatching bool
+	daemonUrl             string
+	workers               int
+	batchSize             int
+	doLoad                bool
+	doDbCreate            bool
+	reportDatabase        string
+	reportHost            string
+	reportUser            string
+	reportPassword        string
+	reportTagsCSV         string
+	psUser                string
+	psPassword            string
+	file                  string
+	chunkDuration         time.Duration
+	usePostgresBatching   bool
+	useTimescaleExtension bool
+	createIndexes         bool
 )
 
 // Global vars
@@ -92,6 +94,8 @@ func init() {
 	flag.IntVar(&batchSize, "batch-size", 100, "Batch size (input items).")
 	flag.IntVar(&workers, "workers", 1, "Number of parallel requests to make.")
 	flag.BoolVar(&usePostgresBatching, "postgresql-batching", false, "Whether to use Postgresql batching feature. Works only for '"+formatChoices[0]+"' format")
+	flag.BoolVar(&useTimescaleExtension, "timescale-extension", true, "Whether to use Timescale in Postgresql")
+	flag.BoolVar(&createIndexes, "create-indexes", true, "Whether to create indexes")
 
 	flag.BoolVar(&doLoad, "do-load", true, "Whether to write data. Set this flag to false to check input read speed.")
 	flag.BoolVar(&doDbCreate, "do-db-create", true, "Whether to create database. Set this flag to false to write data to existing database")
@@ -711,9 +715,11 @@ func createDatabase(daemon_url string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_, err = conn.Exec(createExtensionSql)
-	if err != nil {
-		log.Fatal(err)
+	if useTimescaleExtension {
+		_, err = conn.Exec(createExtensionSql)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	//TODO create only use-case specific schema
 	for _, sql := range DevopsCreateTableSql {
@@ -728,28 +734,32 @@ func createDatabase(daemon_url string) {
 			log.Fatal(err)
 		}
 	}
-	for _, sql := range devopsCreateIndexSql {
-		_, err = conn.Exec(sql)
-		if err != nil {
-			log.Fatal(err)
+	if createIndexes {
+		for _, sql := range devopsCreateIndexSql {
+			_, err = conn.Exec(sql)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		for _, sql := range iotCreateIndexSql {
+			_, err = conn.Exec(sql)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
-	for _, sql := range iotCreateIndexSql {
-		_, err = conn.Exec(sql)
-		if err != nil {
-			log.Fatal(err)
+	if useTimescaleExtension {
+		for _, sql := range devopsCreateHypertableSql {
+			_, err = conn.Exec(fmt.Sprintf(sql, chunkDuration.Nanoseconds()))
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
-	}
-	for _, sql := range devopsCreateHypertableSql {
-		_, err = conn.Exec(fmt.Sprintf(sql, chunkDuration.Nanoseconds()))
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
-	for _, sql := range iotCreateHypertableSql {
-		_, err = conn.Exec(fmt.Sprintf(sql, chunkDuration.Nanoseconds()))
-		if err != nil {
-			log.Fatal(err)
+		for _, sql := range iotCreateHypertableSql {
+			_, err = conn.Exec(fmt.Sprintf(sql, chunkDuration.Nanoseconds()))
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 
