@@ -736,13 +736,6 @@ func createDatabase(daemon_url string) {
 		if err != nil {
 			log.Fatal(err)
 		}
-	} else if createIndexes {
-		for _, sql := range iotCreateTimeIndexSql {
-			_, err = conn.Exec(sql)
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
 	}
 	//TODO create only use-case specific schema
 	for _, sql := range DevopsCreateTableSql {
@@ -758,6 +751,14 @@ func createDatabase(daemon_url string) {
 		}
 	}
 	if createIndexes {
+		if !useTimescaleExtension {
+			for _, sql := range iotCreateTimeIndexSql {
+				_, err = conn.Exec(sql)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+		}
 		for _, sql := range devopsCreateIndexSql {
 			_, err = conn.Exec(sql)
 			if err != nil {
