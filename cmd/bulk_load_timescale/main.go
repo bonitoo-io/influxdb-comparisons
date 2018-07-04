@@ -686,6 +686,22 @@ var iotCreateIndexSql = []string{
 	"CREATE index window_state_room_home_index on window_state_room(home_id, time DESC);",
 }
 
+var iotCreateTimeIndexSql = []string{
+	"CREATE index air_quality_room_time_index on air_quality_room(time DESC);",
+	"CREATE index air_condition_room_time_index on air_condition_room(time DESC);",
+	"CREATE index air_condition_outdoor_time_index on air_condition_outdoor(time DESC);",
+	"CREATE index camera_detection_time_index on camera_detection(time DESC);",
+	"CREATE index door_state_time_index on door_state(time DESC);",
+	"CREATE index home_config_time_index on home_config(time DESC);",
+	"CREATE index home_state_time_index on home_state(time DESC);",
+	"CREATE index light_level_room_time_index on light_level_room(time DESC);",
+	"CREATE index radiator_valve_room_time_index on radiator_valve_room(time DESC);",
+	"CREATE index water_leakage_room_time_index on water_leakage_room(time DESC);",
+	"CREATE index water_level_time_index on water_level(time DESC);",
+	"CREATE index weather_outdoor_time_index on weather_outdoor(time DESC);",
+	"CREATE index window_state_room_time_index on window_state_room(time DESC);",
+}
+
 func createDatabase(daemon_url string) {
 	hostPort := strings.Split(daemon_url, ":")
 	port, _ := strconv.Atoi(hostPort[1])
@@ -719,6 +735,13 @@ func createDatabase(daemon_url string) {
 		_, err = conn.Exec(createExtensionSql)
 		if err != nil {
 			log.Fatal(err)
+		}
+	} else if createIndexes {
+		for _, sql := range iotCreateTimeIndexSql {
+			_, err = conn.Exec(sql)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 	//TODO create only use-case specific schema
