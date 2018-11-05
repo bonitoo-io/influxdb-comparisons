@@ -1,4 +1,4 @@
-package dashboard
+package devops
 
 import (
 	. "github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
