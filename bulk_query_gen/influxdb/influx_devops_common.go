@@ -11,6 +11,7 @@ import (
 // InfluxDevops produces Influx-specific queries for all the devops query types.
 type InfluxDevops struct {
 	InfluxCommon
+	queryInterval time.Duration
 }
 
 // NewInfluxDevops makes an InfluxDevops object ready to generate Queries.
@@ -21,7 +22,8 @@ func newInfluxDevopsCommon(lang Language, dbConfig bulkQuerygen.DatabaseConfig, 
 	}
 
 	return &InfluxDevops{
-		InfluxCommon: *newInfluxCommon(lang, dbConfig[bulkQuerygen.DatabaseName], interval, scaleVar),
+		InfluxCommon:  *newInfluxCommon(lang, dbConfig[bulkQuerygen.DatabaseName], interval, scaleVar),
+		queryInterval: duration,
 	}
 }
 

@@ -28,6 +28,7 @@ const (
 	DevOpsOneHostTwelveHours        = "1-host-12-hr"
 	DevOpsEightHostsOneHour         = "8-host-1-hr"
 	DevOpsGroupBy                   = "groupby"
+	DevOpsMovingAverage             = "devops-moving-average"
 	Iot                             = "iot"
 	IotOneHomeTwelveHours           = "1-home-12-hours"
 	Dashboard                       = "dashboard"
@@ -90,6 +91,9 @@ var useCaseMatrix = map[string]map[string]map[string]bulkQueryGen.QueryGenerator
 			"influx-http":      influxdb.NewInfluxQLDevopsGroupBy,
 			"timescaledb":      timescaledb.NewTimescaleDevopsGroupby,
 		},
+		DevOpsMovingAverage: {
+			"influx-http": influxdb.NewInfluxQLDevopsSystem,
+		},
 	},
 	Iot: {
 		IotOneHomeTwelveHours: {
@@ -143,10 +147,10 @@ var (
 	timestampStartStr string
 	timestampEndStr   string
 
-	timestampStart  time.Time
-	timestampEnd    time.Time
-	queryInterval   time.Duration
-	timeWindowShift time.Duration
+	timestampStart    time.Time
+	timestampEnd      time.Time
+	queryInterval     time.Duration
+	timeWindowShift   time.Duration
 	queryIntervalType string
 
 	seed  int64
