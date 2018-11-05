@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const NHostSims = 10
+const NHostSims = 1
 
 // Count of choices for auto-generated tag values:
 const (
@@ -139,15 +139,15 @@ type Host struct {
 
 func NewHostMeasurements(start time.Time) []SimulatedMeasurement {
 	sm := []SimulatedMeasurement{
-		NewCPUMeasurement(start),
-		NewDiskIOMeasurement(start),
-		NewDiskMeasurement(start, 0),
-		NewKernelMeasurement(start),
-		NewMemMeasurement(start),
-		NewNetMeasurement(start),
-		NewNginxMeasurement(start),
-		NewPostgresqlMeasurement(start),
-		NewRedisMeasurement(start),
+		//NewCPUMeasurement(start),
+		//NewDiskIOMeasurement(start),
+		//NewDiskMeasurement(start, 0),
+		//NewKernelMeasurement(start),
+		//NewMemMeasurement(start),
+		//NewNetMeasurement(start),
+		//NewNginxMeasurement(start),
+		//NewPostgresqlMeasurement(start),
+		//NewRedisMeasurement(start),
 		NewStatusMeasurement(start),
 	}
 
