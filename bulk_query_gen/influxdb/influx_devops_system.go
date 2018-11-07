@@ -34,13 +34,13 @@ func (d *InfluxDevopsSystem) Dispatch(i int) bulkQuerygen.Query {
 
 	hostnames := []string{}
 	for _, n := range nn {
-		hostnames = append(hostnames, fmt.Sprintf("host_%d", n))
+		hostnames = append(hostnames, fmt.Sprintf("value%05d", n))
 	}
 
 	hostnameClauses := []string{}
 	for _, s := range hostnames {
 		if d.language == InfluxQL {
-			hostnameClauses = append(hostnameClauses, fmt.Sprintf("hostname = '%s'", s))
+			hostnameClauses = append(hostnameClauses, fmt.Sprintf("tag10 = '%s'", s))
 		} else {
 			hostnameClauses = append(hostnameClauses, fmt.Sprintf(`r.hostname == "%s"`, s))
 		}
@@ -50,7 +50,7 @@ func (d *InfluxDevopsSystem) Dispatch(i int) bulkQuerygen.Query {
 
 	var query string
 	if d.language == InfluxQL {
-		query = fmt.Sprintf("SELECT  moving_average(count(\"service_up\"),5)/moving_average(count(\"service_under_maintenance\"),5) AS \"service_time\" FROM status WHERE %s and  time >= '%s' and time < '%s' group by time(10m) fill(null)", combinedHostnameClause, interval.StartString(), interval.EndString())
+		query = fmt.Sprintf("SELECT  moving_average(count(\"v0\"),5)/moving_average(count(\"v1\"),5) AS \"service_time\" FROM status WHERE %s and  time >= '%s' and time < '%s' group by time(10m) fill(null)", combinedHostnameClause, interval.StartString(), interval.EndString())
 	} else { // Flux
 		query = fmt.Sprintf(`from(db:"%s") `+
 			`|> range(start:%s, stop:%s) `+
