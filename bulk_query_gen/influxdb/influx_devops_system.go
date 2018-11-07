@@ -40,7 +40,7 @@ func (d *InfluxDevopsSystem) Dispatch(i int) bulkQuerygen.Query {
 	hostnameClauses := []string{}
 	for _, s := range hostnames {
 		if d.language == InfluxQL {
-			hostnameClauses = append(hostnameClauses, fmt.Sprintf("tag10 = '%s'", s))
+			hostnameClauses = append(hostnameClauses, fmt.Sprintf("tag9 = '%s'", s))
 		} else {
 			hostnameClauses = append(hostnameClauses, fmt.Sprintf(`r.hostname == "%s"`, s))
 		}
