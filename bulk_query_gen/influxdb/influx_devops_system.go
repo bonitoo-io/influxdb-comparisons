@@ -50,7 +50,7 @@ func (d *InfluxDevopsSystem) Dispatch(i int) bulkQuerygen.Query {
 
 	var query string
 	if d.language == InfluxQL {
-		query = fmt.Sprintf("SELECT  moving_average(count(\"v0\"),5)/moving_average(count(\"v1\"),5) AS \"service_time\" FROM status WHERE %s and  time >= '%s' and time < '%s' group by time(10m) fill(null)", combinedHostnameClause, interval.StartString(), interval.EndString())
+		query = fmt.Sprintf("SELECT  moving_average(count(\"v0\"),5)/moving_average(count(\"v1\"),5) AS \"service_time\" FROM m0 WHERE %s and  time >= '%s' and time < '%s' group by time(10m) fill(null)", combinedHostnameClause, interval.StartString(), interval.EndString())
 	} else { // Flux
 		query = fmt.Sprintf(`from(db:"%s") `+
 			`|> range(start:%s, stop:%s) `+
