@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -24,9 +25,6 @@ import (
 	"github.com/valyala/fasthttp"
 	"strconv"
 )
-
-// TODO VH: This should be calculated from available simulation data
-const ValuesPerMeasurement = 11.2222
 
 // Program option vars:
 var (
@@ -70,9 +68,15 @@ var (
 
 // Args parsing vars
 var (
-	indexTemplateChoices = map[string][]byte{
-		"default":     defaultTemplate,
-		"aggregation": aggregationTemplate,
+	indexTemplateChoices = map[string]map[string][]byte{
+		"default": {
+			"5": defaultTemplate,
+			"6": defaultTemplate6x,
+		},
+		"aggregation": {
+			"5": aggregationTemplate,
+			"6": aggregationTemplate6x,
+		},
 	}
 )
 
@@ -148,6 +152,76 @@ var aggregationTemplate = []byte(`
 
 `)
 
+var defaultTemplate6x = []byte(`
+{
+  "index_patterns": "*",
+  "settings": {
+    "index": {
+      "refresh_interval": "5s",
+      "number_of_replicas": {{.NumberOfReplicas}},
+      "number_of_shards": {{.NumberOfShards}}
+    }
+  },
+  "mappings": {
+    "_doc": {
+      "_all":            { "enabled": false },
+      "_source":         { "enabled": true },
+      "properties": {
+        "timestamp":    { "type": "date", "doc_values": true }
+      }
+    }
+  }
+}
+`)
+
+var aggregationTemplate6x = []byte(`
+{
+  "index_patterns": "*",
+  "settings": {
+    "index": {
+      "refresh_interval": "5s",
+      "number_of_replicas": {{.NumberOfReplicas}},
+      "number_of_shards": {{.NumberOfShards}}
+    }
+  },
+  "mappings": {
+    "_doc": {
+      "dynamic_templates": [
+        {
+          "all_string_fields_can_be_used_for_filtering": {
+            "match": "*",
+            "match_mapping_type": "string",
+            "mapping": {
+              "type": "keyword",
+              "doc_values": true
+            }
+          }
+        },
+        {
+          "all_nonstring_fields_are_just_stored_in_column_index": {
+            "match": "*",
+            "match_mapping_type": "*",
+            "mapping": {
+              "doc_values": true,
+              "index": false
+            }
+          }
+        }
+      ],
+      "_all": { "enabled": false },
+      "_source": { "enabled": false },
+      "properties": {
+        "timestamp": {
+          "type": "date",
+          "doc_values": true,
+          "index": true
+        }
+      }
+    }
+  }
+}
+`)
+
 // Parse args:
 func init() {
 	flag.StringVar(&csvDaemonUrls, "urls", "http://localhost:9200", "ElasticSearch URLs, comma-separated. Will be used in a round-robin fashion.")
@@ -165,7 +239,7 @@ func init() {
 	flag.BoolVar(&doDBCreate, "do-db-create", true, "Whether to create the database.")
 
 	flag.UintVar(&numberOfReplicas, "number-of-replicas", 0, "Number of ES replicas (note: replicas == replication_factor - 1). Zero replicas means RF of 1.")
-	flag.UintVar(&numberOfShards, "number-of-shards", 5, "Number of ES shards. Typically you will set this to the number of nodes in the cluster.")
+	flag.UintVar(&numberOfShards, "number-of-shards", 1, "Number of ES shards. Typically you will set this to the number of nodes in the cluster.")
 
 	flag.StringVar(&telemetryHost, "telemetry-host", "", "InfluxDB host to write telegraf telemetry to (optional).")
 	flag.BoolVar(&telemetryStderr, "telemetry-stderr", false, "Whether to write telemetry also to stderr.")
@@ -238,32 +312,38 @@ func init() {
 }
 
 func main() {
-	if doLoad && doDBCreate {
-		// check that there are no pre-existing index templates:
-		existingIndexTemplates, err := listIndexTemplates(daemonUrls[0])
+	if doLoad {
+		v, err := checkServer(daemonUrls[0])
 		if err != nil {
 			log.Fatal(err)
 		}
+		if doDBCreate {
+			// check that there are no pre-existing index templates:
+			existingIndexTemplates, err := listIndexTemplates(daemonUrls[0])
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		if len(existingIndexTemplates) > 0 {
-			log.Fatal("There are index templates already in the data store. If you know what you are doing, clear them first with a command like:\ncurl -XDELETE 'http://localhost:9200/_template/*'")
-		}
+			if len(existingIndexTemplates) > 0 {
+				log.Println("There are index templates already in the data store. If you know what you are doing, clear them first with a command like:\ncurl -XDELETE 'http://localhost:9200/_template/*'")
+			}
 
-		// check that there are no pre-existing indices:
-		existingIndices, err := listIndices(daemonUrls[0])
-		if err != nil {
-			log.Fatal(err)
-		}
+			// check that there are no pre-existing indices:
+			existingIndices, err := listIndices(daemonUrls[0])
+			if err != nil {
+				log.Fatal(err)
+			}
 
-		if len(existingIndices) > 0 {
-			log.Fatal("There are indices already in the data store. If you know what you are doing, clear them first with a command like:\ncurl -XDELETE 'http://localhost:9200/_all'")
-		}
+			if len(existingIndices) > 0 {
+				log.Println("There are indices already in the data store. If you know what you are doing, clear them first with a command like:\ncurl -XDELETE 'http://localhost:9200/_all'")
+			}
 
-		// create the index template:
-		indexTemplate := indexTemplateChoices[indexTemplateName]
-		err = createESTemplate(daemonUrls[0], "measurements_template", indexTemplate, numberOfReplicas, numberOfShards)
-		if err != nil {
-			log.Fatal(err)
+			// create the index template:
+			indexTemplate := indexTemplateChoices[indexTemplateName]
+			err = createESTemplate(daemonUrls[0], "measurements_template", indexTemplate[v], numberOfReplicas, numberOfShards)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	}
 	bufPool = sync.Pool{
@@ -290,7 +370,7 @@ func main() {
 	}
 
 	start := time.Now()
-	itemsRead, bytesRead := scan(batchSize)
+	itemsRead, bytesRead, valuesRead := scan(batchSize)
 
 	<-inputDone
 	close(batchChan)
@@ -299,8 +379,7 @@ func main() {
 	took := end.Sub(start)
 	itemsRate := float64(itemsRead) / float64(took.Seconds())
 	bytesRate := float64(bytesRead) / float64(took.Seconds())
-
-	valuesRate := itemsRate * ValuesPerMeasurement
+	valuesRate := float64(valuesRead) / float64(took.Seconds())
 
 	if telemetryHost != "" {
 		close(telemetryChanPoints)
@@ -342,17 +421,27 @@ func main() {
 // scan reads items from stdin. It expects input in the ElasticSearch bulk
 // format: two line pairs, the first line being an 'action' and the second line
 // being the payload. (2 lines = 1 item)
-func scan(itemsPerBatch int) (int64, int64) {
+func scan(itemsPerBatch int) (int64, int64, int64) {
 	buf := bufPool.Get().(*bytes.Buffer)
 
-	var n int
 	var linesRead int64
-	var itemsRead int64
-	var bytesRead int64
+	var err error
+	var itemsRead, bytesRead int64
+	var totalPoints, totalValues int64
+
 	var itemsThisBatch int
 	scanner := bufio.NewScanner(os.Stdin)
 
 	for scanner.Scan() {
+
+		totalPoints, totalValues, err = common.CheckTotalValues(scanner.Text())
+		if totalPoints > 0 || totalValues > 0 {
+			continue
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		linesRead++
 
 		buf.Write(scanner.Bytes())
@@ -383,7 +472,7 @@ func scan(itemsPerBatch int) (int64, int64) {
 	}
 
 	// Finished reading input, make sure last batch goes out.
-	if n > 0 {
+	if itemsThisBatch > 0 {
 		batchChan <- buf
 	}
 
@@ -394,8 +483,11 @@ func scan(itemsPerBatch int) (int64, int64) {
 	if linesRead%2 != 0 {
 		log.Fatalf("the number of lines read was not a multiple of 2, which indicates a bad bulk format for Elastic")
 	}
+	if itemsRead != totalPoints { // totalPoints is unknown (0) when exiting prematurely due to time limit
+		log.Fatalf("Incorrent number of read points: %d, expected: %d:", itemsRead, totalPoints)
+	}
 
-	return itemsRead, bytesRead
+	return itemsRead, bytesRead, totalValues
 }
 
 // processBatches reads byte buffers from batchChan and writes them to the target server, while tracking stats on the write.
@@ -478,6 +570,7 @@ func createESTemplate(daemonUrl, indexTemplateName string, indexTemplateBodyTemp
 	if err != nil {
 		return err
 	}
+	req.Header.Add("Content-Type", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -488,7 +581,8 @@ func createESTemplate(daemonUrl, indexTemplateName string, indexTemplateBodyTemp
 	// does the body need to be read into the void?
 
 	if resp.StatusCode != 200 {
-		return fmt.Errorf("bad mapping create")
+		body, _ := ioutil.ReadAll(resp.Body)
+		return fmt.Errorf("bad mapping create: %s", body)
 	}
 	return nil
 }
@@ -568,4 +662,37 @@ func listIndices(daemonUrl string) (map[string]interface{}, error) {
 	}
 
 	return listing, nil
+}
+
+// checkServer pings  ElasticSearch and returns major version string
+func checkServer(daemonUrl string) (string, error) {
+	majorVer := "5"
+	resp, err := http.Get(daemonUrl)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	var listing map[string]interface{}
+	err = json.Unmarshal(body, &listing)
+	if err != nil {
+		return "", err
+	}
+	if v, ok := listing["version"]; ok {
+		vo := v.(map[string]interface{})
+		if ver, ok := vo["number"]; ok {
+			fmt.Printf("Elastic Search version %s\n", ver)
+			nums := strings.Split(ver.(string), ".")
+			if len(nums) > 0 {
+				majorVer = nums[0]
+			}
+		}
+	}
+
+	return majorVer, nil
 }

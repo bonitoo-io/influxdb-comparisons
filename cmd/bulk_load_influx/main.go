@@ -103,6 +103,7 @@ var (
 	statChan              chan *Stat
 	statGroup             sync.WaitGroup
 	movingAverageStat     *TimedStatGroup
+	scanFinished          bool
 )
 
 var consistencyChoices = map[string]struct{}{
@@ -233,6 +234,7 @@ func printInfo() {
 	fmt.Printf("  Num CPUs: %d\n", runtime.NumCPU())
 }
 func main() {
+	exitCode := 0
 	printInfo()
 	if memprofile {
 		p := profile.Start(profile.MemProfile)
@@ -333,7 +335,18 @@ func main() {
 			BackingOffChan: backingOffChans[i],
 			BackingOffDone: backingOffDones[i],
 		}
-		go processBatches(NewHTTPWriter(cfg, consistency), backingOffChans[i], backingOffDones[i], telemetryChanPoints, fmt.Sprintf("%d", i))
+		go func(w int) {
+			err := processBatches(NewHTTPWriter(cfg, consistency), backingOffChans[w], backingOffDones[w], telemetryChanPoints, fmt.Sprintf("%d", w))
+			if err != nil {
+				fmt.Println(err.Error())
+				endedPrematurely = true
+				prematureEndReason = "Worker error"
+				if !scanFinished {
+					syncChanDone <- 1
+				}
+				exitCode = 1
+			}
+		}(i)
 		go func(w int) {
 			backingOffSecs[w] = processBackoffMessages(w, backingOffChans[w], backingOffDones[w])
 		}(i)
@@ -387,6 +400,9 @@ func main() {
 		close(telemetryChanPoints)
 		<-telemetryChanDone
 	}
+	if endedPrematurely {
+		fmt.Printf("load finished prematurely: %s\n", prematureEndReason)
+	}
 
 	fmt.Printf("loaded %d items in %fsec with %d workers (mean point rate %f/sec, mean value rate %f/s, %.2fMB/sec from stdin)\n", itemsRead, took.Seconds(), workers, itemsRate, valuesRate, bytesRate/(1<<20))
 
@@ -430,15 +446,20 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+	if exitCode != 0 {
+		os.Exit(exitCode)
+	}
 
 }
 
 // scan reads one item at a time from stdin. 1 item = 1 line.
 // When the requested number of items per batch is met, send a batch over batchChan for the workers to write.
 func scan(itemsPerBatch int, doneCh chan int) (int64, int64, int64) {
+	scanFinished = false
 	buf := bufPool.Get().(*bytes.Buffer)
 
 	var n int
+	var err error
 	var itemsRead, bytesRead int64
 	var totalPoints, totalValues int64
 
@@ -457,24 +478,14 @@ outer:
 			break
 		}
 
-		line := scanner.Text()
-		if strings.HasPrefix(line, common.DatasetSizeMarker) {
-			parts := common.DatasetSizeMarkerRE.FindAllStringSubmatch(line, -1)
-			if parts == nil || len(parts[0]) != 3 {
-				log.Fatalf("Incorrent number of matched groups: %#v", parts)
-			}
-			if i, err := strconv.Atoi(parts[0][1]); err == nil {
-				totalPoints = int64(i)
-			} else {
-				log.Fatal(err)
-			}
-			if i, err := strconv.Atoi(parts[0][2]); err == nil {
-				totalValues = int64(i)
-			} else {
-				log.Fatal(err)
-			}
+		totalPoints, totalValues, err = common.CheckTotalValues(scanner.Text())
+		if totalPoints > 0 || totalValues > 0 {
 			continue
 		}
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		itemsRead++
 		batchItemCount++
 
@@ -538,25 +549,26 @@ outer:
 			totalValues = int64(float64(itemsRead) * ValuesPerMeasurement) // needed for statistics summary
 		}
 	}
-
+	scanFinished = true
 	return itemsRead, bytesRead, totalValues
 }
 
 // processBatches reads byte buffers from batchChan and writes them to the target server, while tracking stats on the write.
-func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{}, telemetrySink chan *report.Point, telemetryWorkerLabel string) {
+func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{}, telemetrySink chan *report.Point, telemetryWorkerLabel string) error {
 	var batchesSeen int64
 
 	// Ingestion rate control vars
 	var gvCount float64
 	var gvStart time.Time
-	var wasBackOff bool
+	//var wasBackOff bool
+	defer workersGroup.Done()
 
 	for batch := range batchChan {
 		batchesSeen++
 
 		//var bodySize int
 		ts := time.Now().UnixNano()
-		backOff := false
+		//backOff := false
 
 		if ingestRateLimit > 0 && gvStart.Nanosecond() == 0 {
 			gvStart = time.Now()
@@ -565,6 +577,7 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 		// Write the batch: try until backoff is not needed.
 		if doLoad {
 			var err error
+			sleepTime := backoff
 			for {
 				if useGzip {
 					compressedBatch := bufPool.Get().(*bytes.Buffer)
@@ -580,7 +593,7 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 				}
 
 				if err == BackoffError {
-					backOff = true
+					//backOff = true
 					backoffSrc <- true
 					// Report telemetry, if applicable:
 					if telemetrySink != nil {
@@ -594,14 +607,19 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 						p.AddBoolField("backoff", true)
 						telemetrySink <- p
 					}
-					time.Sleep(backoff)
+					time.Sleep(sleepTime)
+					sleepTime += backoff        // sleep longer if backpressure comes again
+					if sleepTime > 10*backoff { // but not longer than 10x default backoff time
+						log.Printf("[worker %s] sleeping on backoff response way too long (10x %v)", telemetryWorkerLabel, backoff)
+						sleepTime = 10 * backoff
+					}
 				} else {
 					backoffSrc <- false
 					break
 				}
 			}
 			if err != nil {
-				log.Fatalf("Error writing: %s\n", err.Error())
+				return fmt.Errorf("Error writing: %s\n", err.Error())
 			}
 		}
 
@@ -613,12 +631,12 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 		batch.Buffer.Reset()
 		bufPool.Put(batch.Buffer)
 
-		// Backoff means no data was written - nothing to report or calculate
-		if backOff {
-			wasBackOff = true
-			continue
-		}
-
+		/*		// Backoff means no data was written - nothing to report or calculate
+				if backOff {
+					wasBackOff = true
+					continue
+				}
+		*/
 		// Normally report after each batch
 		reportStat := true
 		valuesWritten := float64(batch.Items) * ValuesPerMeasurement
@@ -640,9 +658,9 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 					lagMillis += float64(realDelay)
 				} else {
 					gvStart = now
-					if !wasBackOff {
-						atomic.AddInt32(&speedUpRequest, 1)
-					}
+					//if !wasBackOff {
+					atomic.AddInt32(&speedUpRequest, 1)
+					//}
 				}
 				gvCount = 0
 			} else {
@@ -650,9 +668,9 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 			}
 		}
 
-		// Clear
-		wasBackOff = false
-
+		/*		// Clear
+				wasBackOff = false
+		*/
 		// Report sent batch statistic
 		if reportStat {
 			stat := statPool.Get().(*Stat)
@@ -662,7 +680,7 @@ func processBatches(w *HTTPWriter, backoffSrc chan bool, backoffDst chan struct{
 		}
 	}
 
-	workersGroup.Done()
+	return nil
 }
 
 func processBackoffMessages(workerId int, src chan bool, dst chan struct{}) float64 {
