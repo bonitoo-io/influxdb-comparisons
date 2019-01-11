@@ -3,7 +3,6 @@ package dashboard
 import (
 	. "github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
 	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/devops"
-	"math/rand"
 	"time"
 )
 
@@ -113,14 +112,4 @@ func (d *DashboardSimulator) Next(p *Point) {
 	d.madeValues += int64(len(p.FieldValues))
 
 	return
-}
-
-// Add some real-world timing inaccuracy
-func Inaccurate(d time.Duration) time.Duration {
-	maxDeltaMs := 100
-	if d.Minutes() >= 1 {
-		maxDeltaMs = 1000
-	}
-	deltaMs := rand.Intn(maxDeltaMs)
-	return d + time.Duration(int64(deltaMs*1e6))
 }

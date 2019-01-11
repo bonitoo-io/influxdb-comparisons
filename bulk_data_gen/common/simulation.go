@@ -1,6 +1,9 @@
 package common
 
-import "time"
+import (
+	"math/rand"
+	"time"
+)
 
 const (
 	DefaultDateTimeStart = "2018-01-01T00:00:00Z"
@@ -32,4 +35,15 @@ func MakeUsablePoint() *Point {
 		FieldValues:     make([]interface{}, 0),
 		Timestamp:       &time.Time{},
 	}
+}
+
+
+// Add some real-world timing inaccuracy
+func Inaccurate(d time.Duration) time.Duration {
+	maxDeltaMs := 100
+	if d.Minutes() >= 1 {
+		maxDeltaMs = 1000
+	}
+	deltaMs := rand.Intn(maxDeltaMs)
+	return d + time.Duration(int64(deltaMs*1e6))
 }
