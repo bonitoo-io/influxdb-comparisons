@@ -86,7 +86,7 @@ func (d *DashboardSimulator) Next(p *Point) {
 		d.simulatedMeasurementIndex = 0
 
 		for i := 0; i < len(d.hosts); i++ {
-			d.hosts[i].TickAll(Inaccurate(devops.EpochDuration))
+			d.hosts[i].TickAll(devops.Inaccurate(devops.EpochDuration, devops.EpochDurationMaxDelta))
 		}
 	}
 

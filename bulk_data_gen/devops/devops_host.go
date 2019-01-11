@@ -113,6 +113,9 @@ var (
 	// The duration of a log epoch.
 	EpochDuration = 10 * time.Second
 
+	// The duration maximum inaccuracy.
+	EpochDurationMaxDelta = int(0)
+
 	// Tag fields common to all hosts:
 	MachineTagKeys = [][]byte{
 		[]byte("hostname"),
@@ -189,4 +192,13 @@ func (h *Host) TickAll(d time.Duration) {
 	for i := range h.SimulatedMeasurements {
 		h.SimulatedMeasurements[i].Tick(d)
 	}
+}
+
+
+// Add some real-world timing inaccuracy
+func Inaccurate(d time.Duration, maxDeltaMs int) time.Duration {
+	if maxDeltaMs > 0 {
+		return d + time.Duration(int64(rand.Intn(maxDeltaMs)*1e6))
+	}
+	return d
 }

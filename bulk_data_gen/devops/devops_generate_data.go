@@ -85,7 +85,7 @@ func (d *DevopsSimulator) Next(p *Point) {
 		d.simulatedMeasurementIndex = 0
 
 		for i := 0; i < len(d.hosts); i++ {
-			d.hosts[i].TickAll(EpochDuration)
+			d.hosts[i].TickAll(Inaccurate(EpochDuration, EpochDurationMaxDelta))
 		}
 	}
 

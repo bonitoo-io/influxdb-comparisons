@@ -1,7 +1,6 @@
 package common
 
 import (
-	"math/rand"
 	"time"
 )
 
@@ -35,15 +34,4 @@ func MakeUsablePoint() *Point {
 		FieldValues:     make([]interface{}, 0),
 		Timestamp:       &time.Time{},
 	}
-}
-
-
-// Add some real-world timing inaccuracy
-func Inaccurate(d time.Duration) time.Duration {
-	maxDeltaMs := 100
-	if d.Minutes() >= 1 {
-		maxDeltaMs = 1000
-	}
-	deltaMs := rand.Intn(maxDeltaMs)
-	return d + time.Duration(int64(deltaMs*1e6))
 }

@@ -43,6 +43,7 @@ var (
 	scaleVar       int64
 	scaleVarOffset int64
 	samplingInterval time.Duration
+	samplingInaccuracy int
 
 	timestampStartStr string
 	timestampEndStr   string
@@ -65,6 +66,7 @@ func init() {
 	flag.Int64Var(&scaleVar, "scale-var", 1, "Scaling variable specific to the use case.")
 	flag.Int64Var(&scaleVarOffset, "scale-var-offset", 0, "Scaling variable offset specific to the use case.")
 	flag.DurationVar(&samplingInterval, "sampling-interval", devops.EpochDuration, "Simulated sampling interval.")
+	flag.IntVar(&samplingInaccuracy, "sampling-inaccuracy", 0, "Maximum simulated sampling inaccuracy in milliseconds. When > 0, random amount of ms, up to the specified value, is added to each generated timestamp.")
 
 	flag.StringVar(&timestampStartStr, "timestamp-start", common.DefaultDateTimeStart, "Beginning timestamp (RFC3339).")
 	flag.StringVar(&timestampEndStr, "timestamp-end", common.DefaultDateTimeEnd, "Ending timestamp (RFC3339).")
@@ -116,6 +118,13 @@ func init() {
 	}
 	devops.EpochDuration = samplingInterval
 	log.Printf("Using sampling interval %v\n", devops.EpochDuration)
+
+	if samplingInaccuracy < 0 {
+		log.Fatal("Invalid sampling inaccuracy")
+	} else if samplingInaccuracy > 0 {
+		devops.EpochDurationMaxDelta = samplingInaccuracy
+		log.Printf("Maximum sampling inaccuracy %d ms\n", devops.EpochDurationMaxDelta)
+	}
 }
 
 func main() {
