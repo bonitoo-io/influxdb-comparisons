@@ -1,8 +1,6 @@
 package common
 
-import (
-	"time"
-)
+import "time"
 
 const (
 	DefaultDateTimeStart = "2018-01-01T00:00:00Z"
