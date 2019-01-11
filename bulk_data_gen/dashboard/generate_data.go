@@ -87,7 +87,7 @@ func (d *DashboardSimulator) Next(p *Point) {
 		d.simulatedMeasurementIndex = 0
 
 		for i := 0; i < len(d.hosts); i++ {
-			d.hosts[i].TickAll(Fluctuate(devops.EpochDuration))
+			d.hosts[i].TickAll(Inaccurate(devops.EpochDuration))
 		}
 	}
 
@@ -115,8 +115,12 @@ func (d *DashboardSimulator) Next(p *Point) {
 	return
 }
 
-const TimestampFluctuationPercent = 10
-
-func Fluctuate(d time.Duration) time.Duration {
-	return d + time.Duration(int64(d.Seconds()*(rand.Float64()/TimestampFluctuationPercent)*1e9))
+// Add some real-world timing inaccuracy
+func Inaccurate(d time.Duration) time.Duration {
+	maxDeltaMs := 100
+	if d.Minutes() >= 1 {
+		maxDeltaMs = 1000
+	}
+	deltaMs := rand.Intn(maxDeltaMs)
+	return d + time.Duration(int64(deltaMs*1e6))
 }
