@@ -3,6 +3,7 @@ package dashboard
 import (
 	. "github.com/influxdata/influxdb-comparisons/bulk_data_gen/common"
 	"github.com/influxdata/influxdb-comparisons/bulk_data_gen/devops"
+	"math/rand"
 	"time"
 )
 
@@ -86,7 +87,7 @@ func (d *DashboardSimulator) Next(p *Point) {
 		d.simulatedMeasurementIndex = 0
 
 		for i := 0; i < len(d.hosts); i++ {
-			d.hosts[i].TickAll(devops.EpochDuration)
+			d.hosts[i].TickAll(Fluctuate(devops.EpochDuration))
 		}
 	}
 
@@ -112,4 +113,10 @@ func (d *DashboardSimulator) Next(p *Point) {
 	d.madeValues += int64(len(p.FieldValues))
 
 	return
+}
+
+const TimestampFluctuationPercent = 10
+
+func Fluctuate(d time.Duration) time.Duration {
+	return d + time.Duration(int64(d.Seconds()*(rand.Float64()/TimestampFluctuationPercent)*1e9))
 }
