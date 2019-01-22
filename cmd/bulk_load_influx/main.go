@@ -37,7 +37,7 @@ import (
 )
 
 // TODO VH: This should be calculated from available simulation data
-const ValuesPerMeasurement = 9.63636 // dashboard use-case, original value was: 11.2222
+const ValuesPerMeasurement = 9.63636 // dashboard use-case, original value was: 11.2222 (devops use-case)
 
 // TODO AP: Maybe useless
 const RateControlGranularity = 1000 // 1000 ms = 1s

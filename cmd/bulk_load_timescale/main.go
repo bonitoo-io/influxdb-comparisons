@@ -588,7 +588,7 @@ func processBatchesBin(conn *pgx.Conn) int64 {
 	return total
 }
 
-const createDatabaseSql = "create database " + DatabaseName + ";"
+const createDatabaseSql = "CREATE DATABASE " + DatabaseName + ";"
 const createExtensionSql = "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;"
 
 var DevopsCreateTableSql = []string{
@@ -597,7 +597,7 @@ var DevopsCreateTableSql = []string{
 	"CREATE table disk(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, path TEXT, fstype TEXT, total bigint, free bigint, used bigint, used_percent bigint, inodes_total bigint, inodes_free bigint, inodes_used bigint);",
 	"CREATE table kernel(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, boot_time bigint, interrupts bigint, context_switches bigint, processes_forked bigint, disk_pages_in bigint, disk_pages_out bigint);",
 	"CREATE table mem(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, total bigint, available bigint, used bigint, free bigint, cached bigint, buffered bigint, used_percent float8, available_percent float8, buffered_percent float8);",
-	"CREATE table Net(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, interface TEXT, total_connections_received bigint, expired_keys bigint, evicted_keys bigint, keyspace_hits bigint, keyspace_misses bigint, instantaneous_ops_per_sec bigint, instantaneous_input_kbps bigint, instantaneous_output_kbps bigint );",
+	"CREATE table net(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, interface TEXT, bytes_sent bigint, bytes_recv bigint, packets_sent bigint, packets_recv bigint, err_in bigint, err_out bigint, drop_in bigint, drop_out bigint );",
 	"CREATE table nginx(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, port TEXT, server TEXT, accepts bigint, active bigint, handled bigint, reading bigint, requests bigint, waiting bigint, writing bigint );",
 	"CREATE table postgresl(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, numbackends bigint, xact_commit bigint, xact_rollback bigint, blks_read bigint, blks_hit bigint, tup_returned bigint, tup_fetched bigint, tup_inserted bigint, tup_updated bigint, tup_deleted bigint, conflicts bigint, temp_files bigint, temp_bytes bigint, deadlocks bigint, blk_read_time bigint, blk_write_time bigint );",
 	"CREATE table redis(time bigint not null, hostname TEXT, region TEXT, datacenter TEXT, rack TEXT, os TEXT, arch TEXT, team TEXT, service TEXT, service_version TEXT, service_environment TEXT, port TEXT, server TEXT, uptime_in_seconds bigint, total_connections_received bigint, expired_keys bigint, evicted_keys bigint, keyspace_hits bigint, keyspace_misses bigint, instantaneous_ops_per_sec bigint, instantaneous_input_kbps bigint, instantaneous_output_kbps bigint, connected_clients bigint, used_memory bigint, used_memory_rss bigint, used_memory_peak bigint, used_memory_lua bigint, rdb_changes_since_last_save bigint, sync_full bigint, sync_partial_ok bigint, sync_partial_err bigint, pubsub_channels bigint, pubsub_patterns bigint, latest_fork_usec bigint, connected_slaves bigint, master_repl_offset bigint, repl_backlog_active bigint, repl_backlog_size bigint, repl_backlog_histlen bigint, mem_fragmentation_ratio bigint, used_cpu_sys bigint, used_cpu_user bigint, used_cpu_sys_children bigint, used_cpu_user_children bigint );",
@@ -625,7 +625,7 @@ var devopsCreateHypertableSql = []string{
 	"select create_hypertable('disk','time', chunk_time_interval => %d);",
 	"select create_hypertable('kernel','time', chunk_time_interval => %d);",
 	"select create_hypertable('mem','time', chunk_time_interval => %d);",
-	"select create_hypertable('Net','time', chunk_time_interval => %d);",
+	"select create_hypertable('net','time', chunk_time_interval => %d);",
 	"select create_hypertable('nginx','time', chunk_time_interval => %d);",
 	"select create_hypertable('postgresl','time', chunk_time_interval => %d);",
 	"select create_hypertable('redis','time', chunk_time_interval => %d);",
@@ -653,7 +653,7 @@ var devopsCreateIndexSql = []string{
 	"CREATE index disk_hostname_index on disk(hostname, time DESC);",
 	"CREATE index kernel_hostname_index on kernel(hostname, time DESC);",
 	"CREATE index mem_hostname_index on mem(hostname, time DESC);",
-	"CREATE index Net_hostname_index on Net(hostname, time DESC);",
+	"CREATE index net_hostname_index on net(hostname, time DESC);",
 	"CREATE index nginx_hostname_index on nginx(hostname, time DESC);",
 	"CREATE index postgresl_hostname_index on postgresl(hostname, time DESC);",
 	"CREATE index redis_hostname_index on redis(hostname, time DESC);",
