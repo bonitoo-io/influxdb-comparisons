@@ -622,31 +622,31 @@ var IotCreateTableSql = []string{
 }
 
 var devopsCreateHypertableSql = []string{
-	"select create_hypertable('cpu','time', chunk_time_interval => %d);",
-	"select create_hypertable('diskio','time', chunk_time_interval => %d);",
-	"select create_hypertable('disk','time', chunk_time_interval => %d);",
-	"select create_hypertable('kernel','time', chunk_time_interval => %d);",
-	"select create_hypertable('mem','time', chunk_time_interval => %d);",
-	"select create_hypertable('net','time', chunk_time_interval => %d);",
-	"select create_hypertable('nginx','time', chunk_time_interval => %d);",
-	"select create_hypertable('postgresl','time', chunk_time_interval => %d);",
-	"select create_hypertable('redis','time', chunk_time_interval => %d);",
+	"select create_hypertable('cpu','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('diskio','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('disk','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('kernel','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('mem','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('net','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('nginx','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('postgresl','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('redis','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
 }
 
 var iotCreateHypertableSql = []string{
-	"select create_hypertable('air_quality_room','time', chunk_time_interval => %d);",
-	"select create_hypertable('air_condition_room','time', chunk_time_interval => %d);",
-	"select create_hypertable('air_condition_outdoor','time', chunk_time_interval => %d);",
-	"select create_hypertable('camera_detection','time', chunk_time_interval => %d);",
-	"select create_hypertable('door_state','time', chunk_time_interval => %d);",
-	"select create_hypertable('home_config','time', chunk_time_interval => %d);",
-	"select create_hypertable('home_state','time', chunk_time_interval => %d);",
-	"select create_hypertable('light_level_room','time', chunk_time_interval => %d);",
-	"select create_hypertable('radiator_valve_room','time', chunk_time_interval => %d);",
-	"select create_hypertable('water_leakage_room','time', chunk_time_interval => %d);",
-	"select create_hypertable('water_level','time', chunk_time_interval => %d);",
-	"select create_hypertable('weather_outdoor','time', chunk_time_interval => %d);",
-	"select create_hypertable('window_state_room','time', chunk_time_interval => %d);",
+	"select create_hypertable('air_quality_room','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('air_condition_room','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('air_condition_outdoor','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('camera_detection','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('door_state','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('home_config','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('home_state','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('light_level_room','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('radiator_valve_room','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('water_leakage_room','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('water_level','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('weather_outdoor','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
+	"select create_hypertable('window_state_room','time', chunk_time_interval => %d, create_default_indexes => FALSE);",
 }
 
 var devopsCreateIndexSql = []string{
