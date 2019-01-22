@@ -115,6 +115,8 @@ func init() {
 			format = "timescaledb-sql-batching"
 		}
 	}
+	log.Printf("Using %s format", format)
+
 	if reportHost != "" {
 		fmt.Printf("results report destination: %v\n", reportHost)
 		fmt.Printf("results report database: %v\n", reportDatabase)
