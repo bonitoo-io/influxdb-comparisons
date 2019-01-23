@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,6 +48,7 @@ var (
 	file                string
 	chunkDuration       time.Duration
 	usePostgresBatching bool
+	cpuProfile          string
 )
 
 // Global vars
@@ -103,6 +105,8 @@ func init() {
 	flag.StringVar(&reportPassword, "report-password", "", "User password for Host to send result metrics")
 	flag.StringVar(&reportTagsCSV, "report-tags", "", "Comma separated k:v tags to send  alongside result metrics")
 
+	flag.StringVar(&cpuProfile, "cpu-profile", "", "CPU profile filename")
+
 	flag.Parse()
 
 	if _, ok := processes[format]; !ok {
@@ -153,6 +157,17 @@ func init() {
 }
 
 func main() {
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
+		if err != nil {
+			log.Fatal("could not create CPU profile file: ", err)
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	if doLoad && doDbCreate {
 		createDatabase(daemonUrl)
 	}
