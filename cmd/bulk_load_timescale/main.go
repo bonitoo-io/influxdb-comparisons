@@ -54,8 +54,11 @@ var (
 // Global vars
 var (
 	bufPool        sync.Pool
+	wipBatches     map[string]*insertBatch
+	wipBinBatches  map[string]*insertBinBatch
+	wipBatchBatches map[string]*insertBatchBatch
 	batchChan      chan *bytes.Buffer
-	batchChanBin   chan []FlatPoint
+	batchChanBin   chan []*FlatPoint
 	batchChanBatch chan []string
 	inputDone      chan struct{}
 	workersGroup   sync.WaitGroup
@@ -91,7 +94,7 @@ func init() {
 	flag.StringVar(&file, "file", "", "Input file")
 
 	flag.StringVar(&format, "format", formatChoices[1], "Input data format. One of: "+strings.Join(formatChoices, ","))
-	flag.IntVar(&batchSize, "batch-size", 100, "Batch size (input items).")
+	flag.IntVar(&batchSize, "batch-size", 5000, "Batch size (input items).")
 	flag.IntVar(&workers, "workers", 1, "Number of parallel requests to make.")
 	flag.BoolVar(&usePostgresBatching, "postgresql-batching", false, "Whether to use Postgresql batching feature. Works only for '"+formatChoices[0]+"' format")
 
@@ -177,9 +180,28 @@ func main() {
 			return bytes.NewBuffer(make([]byte, 0, 4*1024*1024))
 		},
 	}
+	wipBatches = make(map[string]*insertBatch)
+
+	// override pool type for some formats
+	switch format {
+	case formatChoices[1]:
+		bufPool = sync.Pool{
+			New: func() interface{} {
+				return make([]*FlatPoint, 0, batchSize)
+			},
+		}
+		wipBinBatches = make(map[string]*insertBinBatch)
+	case "timescaledb-sql-batching":
+		bufPool = sync.Pool{
+			New: func() interface{} {
+				return make([]string, 0, batchSize)
+			},
+		}
+		wipBatchBatches = make(map[string]*insertBatchBatch)
+	}
 
 	batchChan = make(chan *bytes.Buffer, workers)
-	batchChanBin = make(chan []FlatPoint, workers)
+	batchChanBin = make(chan []*FlatPoint, workers)
 	batchChanBatch = make(chan []string, workers)
 	inputDone = make(chan struct{})
 
@@ -262,13 +284,11 @@ func main() {
 
 // scan reads lines from stdin. It expects input in the postgresql sql format.
 func scan(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
-	var n int
 	var linesRead, bytesRead int64
 	var totalPoints, totalValues int64
 
-	buff := bufPool.Get().(*bytes.Buffer)
+	nameBaseOffset := len("INSERT INTO ")
 	newline := []byte("\n")
-
 	scanner := bufio.NewScanner(bufio.NewReaderSize(reader, 4*1024*1024))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -289,17 +309,21 @@ func scan(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
 			}
 			continue
 		}
+
 		linesRead++
+		bytesRead += int64(len(line))
 
-		buff.Write(scanner.Bytes())
-		buff.Write(newline)
+		rem := line[nameBaseOffset:]
+		name := rem[:strings.IndexByte(rem, ' ')]
+		buff := getBatch(name)
+		buff.buff.Write(scanner.Bytes())
+		buff.buff.Write(newline)
+		buff.n++
 
-		n++
-		if n >= itemsPerBatch {
-			bytesRead += int64(buff.Len())
-			batchChan <- buff
-			buff = bufPool.Get().(*bytes.Buffer)
-			n = 0
+		if buff.n >= itemsPerBatch {
+			batchChan <- buff.buff
+			buff.buff = nil
+			buff.n = 0
 		}
 	}
 
@@ -308,8 +332,10 @@ func scan(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
 	}
 
 	// Finished reading input, make sure last batch goes out.
-	if n > 0 {
-		batchChan <- buff
+	for _, buff := range wipBatches {
+		if buff.n > 0 {
+			batchChan <- buff.buff
+		}
 	}
 
 	// Closing inputDone signals to the application that we've read everything and can now shut down.
@@ -327,13 +353,12 @@ func scan(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
 
 // scan reads lines from stdin. It expects input in the postgresql sql format.
 func scanBatch(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
-	var n int
 	var linesRead, bytesRead int64
 	var err error
 	var totalPoints, totalValues int64
 
+	nameBaseOffset := len("INSERT INTO ")
 	scanner := bufio.NewScanner(bufio.NewReaderSize(reader, 4*1024*1024))
-	var buff = make([]string, 0, itemsPerBatch)
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -346,13 +371,16 @@ func scanBatch(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
 		}
 
 		linesRead++
-		buff = append(buff, line)
 		bytesRead += int64(len(line))
-		n++
-		if n >= itemsPerBatch {
-			batchChanBatch <- buff
-			buff = make([]string, 0, itemsPerBatch)
-			n = 0
+
+		rem := line[nameBaseOffset:]
+		name := rem[:strings.IndexByte(rem, ' ')]
+		buff := getBatchBatch(name)
+		buff.buff = append(buff.buff, line)
+
+		if len(buff.buff) >= itemsPerBatch {
+			batchChanBatch <- buff.buff
+			buff.buff = nil
 		}
 	}
 
@@ -361,8 +389,10 @@ func scanBatch(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
 	}
 
 	// Finished reading input, make sure last batch goes out.
-	if n > 0 {
-		batchChanBatch <- buff
+	for _, buff := range wipBatchBatches {
+		if len(buff.buff) > 0 {
+			batchChanBatch <- buff.buff
+		}
 	}
 
 	// Closing inputDone signals to the application that we've read everything and can now shut down.
@@ -380,16 +410,12 @@ func scanBatch(itemsPerBatch int, reader io.Reader) (int64, int64, int64) {
 
 // scan reads data from stdin. It expects gop encoded points
 func scanBin(itemsPerBatch int, origReader io.Reader) (int64, int64, int64) {
-
-	var n int
 	var itemsRead, bytesRead int64
 	var err error
-	var lastMeasurement string
-	var p FlatPoint
 	var tsfp timescale_serialization.FlatPoint
 	var size uint64
 
-	buff := make([]FlatPoint, 0, itemsPerBatch)
+	//buff := bufPool.Get().([]*FlatPoint)
 	byteBuff := make([]byte, 100*1024)
 	reader := bufio.NewReaderSize(origReader, 4*1024*1024)
 	for {
@@ -427,8 +453,9 @@ func scanBin(itemsPerBatch int, origReader io.Reader) (int64, int64, int64) {
 
 		bytesRead += int64(size) + 8
 
+		p := &FlatPoint{}
 		p.MeasurementName = tsfp.MeasurementName
-		p.Columns = tsfp.Columns
+		p.Columns = append(p.Columns, tsfp.Columns...)
 		p.Values = make([]interface{}, len(tsfp.Values))
 		for i, f := range tsfp.Values {
 			switch f.Type {
@@ -445,38 +472,30 @@ func scanBin(itemsPerBatch int, origReader io.Reader) (int64, int64, int64) {
 				log.Fatalf("invalid type of %d item: %d", itemsRead, f.Type)
 			}
 		}
+		itemsRead++
 
-		//log.Printf("Decoded %d point\n",itemsRead+1)
-		newMeasurement := itemsRead > 1 && p.MeasurementName != lastMeasurement
-		if !newMeasurement {
-			buff = append(buff, p)
-			itemsRead++
-			n++
+		buff := getBinBatch(p.MeasurementName)
+		buff.buff = append(buff.buff, p)
+
+		if len(buff.buff) >= itemsPerBatch {
+			batchChanBin <- buff.buff
+			buff.buff = nil
 		}
-		if n > 0 && (n >= itemsPerBatch || newMeasurement) {
-			batchChanBin <- buff
-			n = 0
-			buff = nil
-			buff = make([]FlatPoint, 0, itemsPerBatch)
-		}
-		if newMeasurement {
-			buff = append(buff, p)
-			itemsRead++
-			n++
-		}
-		lastMeasurement = p.MeasurementName
-		p = FlatPoint{}
-		tsfp = timescale_serialization.FlatPoint{}
+
+		// Reset the protobuf point.
+		tsfp.MeasurementName = ""
+		tsfp.Columns = tsfp.Columns[:0]
+		tsfp.Values = tsfp.Values[:0]
 	}
 
 	if err != nil && err != io.EOF {
 		log.Fatalf("Error reading input after %d items: %s", itemsRead, err.Error())
 	}
 
-	// Finished reading input, make sure last batch goes out.
-	if n > 0 {
-		batchChanBin <- buff
-		buff = nil
+	for _, buff := range wipBinBatches {
+		if len(buff.buff) > 0 {
+			batchChanBin <- buff.buff
+		}
 	}
 
 	// Closing inputDone signals to the application that we've read everything and can now shut down.
@@ -537,6 +556,8 @@ func processBatchesBatch(conn *pgx.Conn) int64 {
 		}
 		sqlBatch.Close()
 		// Return the batch buffer to the pool.
+		batch = batch[:0]
+		bufPool.Put(batch)
 		total += int64(len(batch))
 		batches++
 	}
@@ -544,15 +565,73 @@ func processBatchesBatch(conn *pgx.Conn) int64 {
 	return total
 }
 
+type insertBatch struct {
+	buff *bytes.Buffer
+	n int
+}
+
+func getBatch(measurementName string) *insertBatch  {
+	buff := wipBatches[measurementName]
+	if buff == nil {
+		buff = &insertBatch{
+			buff:bufPool.Get().(*bytes.Buffer),
+		}
+		wipBatches[measurementName] = buff
+	} else {
+		if buff.buff == nil {
+			buff.buff = bufPool.Get().(*bytes.Buffer)
+		}
+	}
+	return buff
+}
+
+type insertBinBatch struct {
+	buff []*FlatPoint
+}
+
+func getBinBatch(measurementName string) *insertBinBatch  {
+	buff := wipBinBatches[measurementName]
+	if buff == nil {
+		buff = &insertBinBatch{
+			buff:bufPool.Get().([]*FlatPoint),
+		}
+		wipBinBatches[measurementName] = buff
+	} else {
+		if buff.buff == nil {
+			buff.buff = bufPool.Get().([]*FlatPoint)
+		}
+	}
+	return buff
+}
+
+type insertBatchBatch struct {
+	buff []string
+}
+
+func getBatchBatch(measurementName string) *insertBatchBatch  {
+	buff := wipBatchBatches[measurementName]
+	if buff == nil {
+		buff = &insertBatchBatch{
+			buff:bufPool.Get().([]string),
+		}
+		wipBatchBatches[measurementName] = buff
+	} else {
+		if buff.buff == nil {
+			buff.buff = bufPool.Get().([]string)
+		}
+	}
+	return buff
+}
+
 // CopyFromPoint is implementation of the interface CopyFromSource  used by *Conn.CopyFrom as the source for copy data.
 // It wraps arrays of FlatPoints
 type CopyFromPoint struct {
 	i      int
-	points []FlatPoint
+	points []*FlatPoint
 	n      int
 }
 
-func NewCopyFromPoint(points []FlatPoint) *CopyFromPoint {
+func NewCopyFromPoint(points []*FlatPoint) *CopyFromPoint {
 	//log.Printf("NewCopyFromPoint\n")
 	cp := &CopyFromPoint{}
 	cp.points = points
@@ -598,6 +677,9 @@ func processBatchesBin(conn *pgx.Conn) int64 {
 		if rows != len(batch) {
 			log.Printf("Problem writing of %d batch: Written only %d rows of %d", n, rows, len(batch))
 		}
+		// Return the batch buffer to the pool.
+		batch = batch[:0]
+		bufPool.Put(batch)
 		total += int64(len(batch))
 		n++
 	}
@@ -762,5 +844,4 @@ func createDatabase(daemon_url string) {
 			log.Fatal(err)
 		}
 	}
-
 }
