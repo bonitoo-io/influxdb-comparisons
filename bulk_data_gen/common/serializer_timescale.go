@@ -10,10 +10,13 @@ import (
 )
 
 type SerializerTimescaleSql struct {
+	buf []byte
 }
 
 func NewSerializerTimescaleSql() *SerializerTimescaleSql {
-	return &SerializerTimescaleSql{}
+	return &SerializerTimescaleSql{
+		buf:make([]byte, 0, 4096),
+	}
 }
 
 type SerializerTimescaleBin struct {
@@ -30,7 +33,7 @@ func NewSerializerTimescaleBin() *SerializerTimescaleBin {
 // INSERT INTO <tablename> (time,<tag_name list>,<field_name list>') VALUES (<timestamp in nanoseconds>, <tag values list>, <field values>)
 func (s *SerializerTimescaleSql) SerializePoint(w io.Writer, p *Point) (err error) {
 	timestampNanos := p.Timestamp.UTC().UnixNano()
-	buf := make([]byte, 0, 4096)
+	buf := s.buf[:0]
 	buf = append(buf, []byte("INSERT INTO ")...)
 	buf = append(buf, []byte(p.MeasurementName)...)
 	buf = append(buf, []byte(" (time")...)
@@ -77,7 +80,6 @@ func (s *SerializerTimescaleSql) SerializeSize(w io.Writer, points int64, values
 //
 //
 func (t *SerializerTimescaleBin) SerializePoint(w io.Writer, p *Point) (err error) {
-
 	var f timescale_serialization.FlatPoint
 	f.MeasurementName = string(p.MeasurementName)
 	// Write the batch.
@@ -129,7 +131,7 @@ func (t *SerializerTimescaleBin) SerializePoint(w io.Writer, p *Point) (err erro
 	}
 	timeVal := timescale_serialization.FlatPoint_FlatPointValue{}
 	timeVal.Type = timescale_serialization.FlatPoint_INTEGER
-	timeVal.IntVal = p.Timestamp.UnixNano()
+	timeVal.IntVal = p.Timestamp.UTC().UnixNano()
 	f.Values[c] = &timeVal
 
 	out, err := f.Marshal()
@@ -142,7 +144,7 @@ func (t *SerializerTimescaleBin) SerializePoint(w io.Writer, p *Point) (err erro
 	return nil
 }
 
-func (s *SerializerTimescaleBin) SerializeSize(w io.Writer, points int64, values int64) error {
+func (t *SerializerTimescaleBin) SerializeSize(w io.Writer, points int64, values int64) error {
 	//return serializeSizeInText(w, points, values)
 	return nil
 }
