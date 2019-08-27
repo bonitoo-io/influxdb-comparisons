@@ -69,7 +69,7 @@ func (d *SplunkDevops) maxCPUUsageHourByMinuteNHosts(qi bulkQuerygen.Query, nhos
 	}
 	var hostnameClauses []string
 	for _, s := range hostnames {
-		hostnameClauses = append(hostnameClauses, fmt.Sprintf("host=%s", s)) // Splunk has built-in field 'host', load tool populates it with the same value as 'hostname' tag
+		hostnameClauses = append(hostnameClauses, fmt.Sprintf("hostname=%s", s)) // Splunk has built-in field 'host', load tool populates it with the same value as 'hostname' tag
 	}
 	combinedHostnameClause := strings.Join(hostnameClauses, " OR ")
 
@@ -91,7 +91,7 @@ func (d *SplunkDevops) MeanCPUUsageDayByHourAllHostsGroupbyHost(qi bulkQuerygen.
 	interval := d.AllInterval.RandWindow(24 * time.Hour)
 
 	// bellow is 7.1+ search, with 7.0 it would have to be "| mstats avg(_value) WHERE index=%s AND metric_name=cpu.usage_user earliest=%s latest=%s span=1h BY host"
-	query := fmt.Sprintf("| mstats avg(cpu.usage_user) WHERE index=%s earliest=%s latest=%s span=1h BY host",
+	query := fmt.Sprintf("| mstats avg(cpu.usage_user) WHERE index=%s earliest=%s latest=%s span=1h BY hostname",
 		d.DatabaseName, splunkTimestamp(interval.Start.UTC()), splunkTimestamp(interval.End.UTC()))
 	humanLabel := fmt.Sprintf("Splunk mean cpu, all hosts, rand 1day by 1hour")
 
